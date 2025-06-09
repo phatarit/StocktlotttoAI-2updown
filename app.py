@@ -24,11 +24,11 @@ if len(draws) < MIN_DRAW:
     st.stop()
 st.dataframe(pd.DataFrame(draws, columns=["เลข 4 หลัก"]), use_container_width=True)
 
-# ───────────────── IMPROVED FUNCTIONS ─────────────────
+# ───────────────── ENHANCED FUNCTIONS ─────────────────
 def unordered2(a, b):
     return "".join(sorted([a, b]))
 
-def improved_two_combo(hist, alpha, window=WINDOW_PAIR):
+def enhanced_two_combo(hist, alpha, window=WINDOW_PAIR):
     pair_freq = Counter()
     recent_pairs = hist[-window:]
     for i, num in enumerate(reversed(recent_pairs)):
@@ -37,25 +37,33 @@ def improved_two_combo(hist, alpha, window=WINDOW_PAIR):
             pair = unordered2(x, y)
             pair_freq[pair] += weight
 
-    recent_numbers = [num[-2:] for num in recent_pairs]
-    reversed_pairs = Counter()
-    for num in recent_numbers:
-        reversed_pairs[num] += 1
-        reversed_pairs[num[::-1]] += 0.5
+    # เสริมเลขพิเศษ: ซ้ำ, ข้ามงวด, หายไป
+    last = hist[-1] if len(hist) >= 1 else ""
+    prev = hist[-2] if len(hist) >= 2 else ""
+    skip1 = hist[-3] if len(hist) >= 3 else ""
+    recent_digits = "".join(hist[-5:]) if len(hist) >= 5 else ""
 
-    combined_scores = Counter()
-    for pair, freq in pair_freq.items():
-        combined_scores[pair] = freq + reversed_pairs[pair]
+    specials = []
+    if prev:
+        specials += [unordered2(prev[i], prev[j]) for i in range(4) for j in range(i+1, 4)]
+    if skip1:
+        specials += [unordered2(skip1[i], skip1[j]) for i in range(4) for j in range(i+1, 4)]
+    missing_digits = [d for d in '0123456789' if d not in recent_digits]
+    specials += [unordered2(a, b) for a in missing_digits for b in missing_digits if a != b]
 
-    return [pair for pair, _ in combined_scores.most_common(PAIR_KEEP)]
+    for s in specials:
+        pair_freq[s] += 1
+
+    return [pair for pair, _ in pair_freq.most_common(PAIR_KEEP)]
 
 # ───────────────── CALC & DISPLAY ─────────────────
-a = max(ALPHA_GRID, key=lambda alpha: sum(1 for i in range(MIN_DRAW,len(draws))
-    if any(pair[0] in draws[i] and pair[1] in draws[i] for pair in improved_two_combo(draws[:i], alpha))))
+a = max(ALPHA_GRID, key=lambda alpha: sum(
+    1 for i in range(MIN_DRAW, len(draws))
+    if any(pair[0] in draws[i] and pair[1] in draws[i] for pair in enhanced_two_combo(draws[:i], alpha))
+))
 
-combo_two = improved_two_combo(draws, a)
+combo_two = enhanced_two_combo(draws, a)
 
-st.subheader("🔮 เจาะสองตัวบน-ล่าง ปรับปรุงใหม่")
+st.subheader("🔮 เจาะสองตัวบน-ล่าง ปรับสูตรเพิ่มเลขเด่น")
 st.markdown("  ".join(combo_two), unsafe_allow_html=True)
-
-st.caption("© 2025 LoasLottoAI – Enhanced EWMA Prediction")
+st.caption("© 2025 LoasLottoAI – Enhanced + Hot Digit Weighted Prediction")
