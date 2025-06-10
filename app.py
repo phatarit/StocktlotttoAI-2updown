@@ -47,7 +47,7 @@ def stat_prediction(nums, window=10, topk=5):
     return hot_digit, pairs, triplets, digit_freq
 
 # ----------- ML PART (Neural Network สำหรับเลขหลักสุดท้าย) -----------
-def predict_next_digit_ml(nums, window=4, epochs=40):
+def predict_next_digit_ml(nums, window=4):
     nums = [list(map(int, list(x))) for x in nums]
     X, y = [], []
     for i in range(len(nums)-window):
@@ -57,16 +57,10 @@ def predict_next_digit_ml(nums, window=4, epochs=40):
         y.append(target)
     if len(X) < 10: return None
     X, y = np.array(X), np.array(y)
-    model = Sequential([
-        Dense(32, activation='relu', input_shape=(window*5,)),
-        Dense(16, activation='relu'),
-        Dense(10, activation='softmax')
-    ])
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
-    model.fit(X, y, epochs=epochs, verbose=0)
+    model = MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=2000, random_state=42)
+    model.fit(X, y)
     last_features = np.array(nums[-window:]).flatten().reshape(1, -1)
-    pred_prob = model.predict(last_features, verbose=0)
-    pred_digit = np.argmax(pred_prob)
+    pred_digit = model.predict(last_features)[0]
     return pred_digit
 
 # ------- แสดงผล (10 และ 20 งวด)
