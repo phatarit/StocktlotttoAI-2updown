@@ -3,8 +3,7 @@ import streamlit as st
 import pandas as pd
 from collections import Counter
 import numpy as np
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from sklearn.neural_network import MLPClassifier
 
 st.set_page_config(page_title="StockLottoAI 5 หลัก", page_icon="🎯", layout="centered")
 st.title("🎯 StockLottoAI - วิเคราะห์หวยหุ้น 5 หลัก + AI")
