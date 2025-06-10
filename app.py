@@ -1,69 +1,96 @@
 
-import streamlit as st, pandas as pd, math
-from collections import Counter, defaultdict
-from itertools import combinations
+import streamlit as st
+import pandas as pd
+from collections import Counter
+import numpy as np
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
 
-# ───────────────── CONFIG ─────────────────
-st.set_page_config(page_title="LoasLottoAI", page_icon="🇱🇦", layout="centered")
-st.title("🎯 LoasLottoAI")
+st.set_page_config(page_title="StockLottoAI 5 หลัก", page_icon="🎯", layout="centered")
+st.title("🎯 StockLottoAI - วิเคราะห์หวยหุ้น 5 หลัก + AI")
 
-MIN_DRAW = 30
-WINDOW_PAIR = 60
-PAIR_KEEP = 10
-ALPHA_GRID = [0.90, 0.92, 0.94, 0.96, 0.98]
+st.markdown("วางเลข 5 หลักแต่ละงวด (บรรทัดละ 1 ชุด) เช่น 56789\n12345\n09876")
 
-# ───────────────── INPUT ─────────────────
-raw = st.text_area(
-    "📥 วางผลหวยลาว 4 หลัก (บรรทัดละ 1 งวด)", height=220,
-    placeholder="เช่น 9767\n5319\n1961 …"
-)
-draws = [l.strip() for l in raw.splitlines() if l.strip().isdigit() and len(l.strip())==4]
-st.write(f"📊 โหลดแล้ว **{len(draws)}** งวด")
-if len(draws) < MIN_DRAW:
-    st.info(f"⚠️ ต้องมีข้อมูลอย่างน้อย {MIN_DRAW} งวด")
-    st.stop()
-st.dataframe(pd.DataFrame(draws, columns=["เลข 4 หลัก"]), use_container_width=True)
+# ─────── INPUT ───────
+raw = st.text_area("📥 วางผลหวย 5 หลัก", height=220, placeholder="56789\n12345\n09876 ...")
+draws = [line.strip() for line in raw.splitlines() if line.strip().isdigit() and len(line.strip())==5]
+n_draw = len(draws)
+st.write(f"📊 โหลดข้อมูล **{n_draw}** งวด")
 
-# ───────────────── ENHANCED FUNCTIONS ─────────────────
-def unordered2(a, b):
-    return "".join(sorted([a, b]))
+def get_hot_digit(nums, window):
+    last_nums = nums[-window:]
+    all_digits = "".join(last_nums)
+    c = Counter(all_digits)
+    most = c.most_common(1)[0][0] if c else ""
+    return most, c
 
-def enhanced_two_combo(hist, alpha, window=WINDOW_PAIR):
-    pair_freq = Counter()
-    recent_pairs = hist[-window:]
-    for i, num in enumerate(reversed(recent_pairs)):
-        weight = alpha ** i
-        for x, y in combinations(num, 2):
-            pair = unordered2(x, y)
-            pair_freq[pair] += weight
+def get_hot_pairs(nums, window, topk=5):
+    last_pairs = [num[-2:] for num in nums[-window:]]
+    c = Counter(last_pairs)
+    return [pair for pair, _ in c.most_common(topk)]
 
-    # เสริมเลขพิเศษ: ซ้ำ, ข้ามงวด, หายไป
-    last = hist[-1] if len(hist) >= 1 else ""
-    prev = hist[-2] if len(hist) >= 2 else ""
-    skip1 = hist[-3] if len(hist) >= 3 else ""
-    recent_digits = "".join(hist[-5:]) if len(hist) >= 5 else ""
+def get_hot_triplets(nums, window, hot_digit, pairs, topk=5):
+    triplets = set()
+    for p in pairs:
+        triplets.add(hot_digit + p)
+        triplets.add(p + hot_digit)
+        triplets.add(p[0] + hot_digit + p[1])
+    last_triples = [num[-3:] for num in nums[-window:]]
+    c = Counter(last_triples)
+    sorted_tris = [tri for tri, _ in c.most_common(topk)]
+    output = list(triplets)[:max(0, topk-len(sorted_tris))] + [tri for tri in sorted_tris if tri not in triplets]
+    return output[:topk]
 
-    specials = []
-    if prev:
-        specials += [unordered2(prev[i], prev[j]) for i in range(4) for j in range(i+1, 4)]
-    if skip1:
-        specials += [unordered2(skip1[i], skip1[j]) for i in range(4) for j in range(i+1, 4)]
-    missing_digits = [d for d in '0123456789' if d not in recent_digits]
-    specials += [unordered2(a, b) for a in missing_digits for b in missing_digits if a != b]
+def stat_prediction(nums, window=10, topk=5):
+    hot_digit, digit_freq = get_hot_digit(nums, window)
+    pairs = get_hot_pairs(nums, window, topk)
+    triplets = get_hot_triplets(nums, window, hot_digit, pairs, topk)
+    return hot_digit, pairs, triplets, digit_freq
 
-    for s in specials:
-        pair_freq[s] += 1
+# ----------- ML PART (Neural Network สำหรับเลขหลักสุดท้าย) -----------
+def predict_next_digit_ml(nums, window=4, epochs=40):
+    nums = [list(map(int, list(x))) for x in nums]
+    X, y = [], []
+    for i in range(len(nums)-window):
+        features = np.array(nums[i:i+window]).flatten()
+        target = nums[i+window][-1]
+        X.append(features)
+        y.append(target)
+    if len(X) < 10: return None
+    X, y = np.array(X), np.array(y)
+    model = Sequential([
+        Dense(32, activation='relu', input_shape=(window*5,)),
+        Dense(16, activation='relu'),
+        Dense(10, activation='softmax')
+    ])
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy')
+    model.fit(X, y, epochs=epochs, verbose=0)
+    last_features = np.array(nums[-window:]).flatten().reshape(1, -1)
+    pred_prob = model.predict(last_features, verbose=0)
+    pred_digit = np.argmax(pred_prob)
+    return pred_digit
 
-    return [pair for pair, _ in pair_freq.most_common(PAIR_KEEP)]
+# ------- แสดงผล (10 และ 20 งวด)
+for win in [10, 20]:
+    if n_draw >= win:
+        st.subheader(f"🎲 วิเคราะห์ {win} งวดล่าสุด (Logic ปกติ)")
+        hot_digit, pairs, triplets, freq = stat_prediction(draws, window=win, topk=5)
+        st.write(f"**เลขเด่น:** <span style='color:red;font-size:2em'>{hot_digit}</span>", unsafe_allow_html=True)
+        st.write("**เลขสองตัว (Top 5):**", ", ".join(pairs))
+        st.write("**เลขสามตัว (Top 5):**", ", ".join(triplets))
+        st.caption(f"ค่าความถี่เลขเด่น: {dict(freq)}")
+    else:
+        st.info(f"ต้องมีข้อมูลอย่างน้อย {win} งวด สำหรับวิเคราะห์ {win} งวดล่าสุด")
 
-# ───────────────── CALC & DISPLAY ─────────────────
-a = max(ALPHA_GRID, key=lambda alpha: sum(
-    1 for i in range(MIN_DRAW, len(draws))
-    if any(pair[0] in draws[i] and pair[1] in draws[i] for pair in enhanced_two_combo(draws[:i], alpha))
-))
+# ---------- ML Predict
+if n_draw >= 25:
+    st.subheader("🤖 AI (ML) ทำนายเลขเด่นหลักสุดท้ายงวดถัดไป")
+    pred_digit = predict_next_digit_ml(draws, window=4, epochs=60)
+    if pred_digit is not None:
+        st.write(f"**AI ทำนายเลขหลักสุดท้าย:** <span style='font-size:2em;color:green'>{pred_digit}</span>", unsafe_allow_html=True)
+    else:
+        st.warning("ข้อมูลยังน้อยเกินไปสำหรับ ML ทำนาย (ต้องอย่างน้อย 25 งวด)")
+else:
+    st.info("ใส่ข้อมูลอย่างน้อย 25 งวด เพื่อให้ AI (ML) เรียนรู้และทำนายเลขหลักสุดท้ายได้")
 
-combo_two = enhanced_two_combo(draws, a)
-
-st.subheader("🔮 เจาะสองตัวบน-ล่าง ปรับสูตรเพิ่มเลขเด่น")
-st.markdown("  ".join(combo_two), unsafe_allow_html=True)
-st.caption("© 2025 LoasLottoAI – Enhanced + Hot Digit Weighted Prediction")
+st.caption("© 2025 StockLottoAI - วิเคราะห์หวยหุ้น 5 หลัก พร้อม AI/ML")
