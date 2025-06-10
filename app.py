@@ -78,7 +78,7 @@ for win in [10, 20]:
 # ---------- ML Predict
 if n_draw >= 25:
     st.subheader("🤖 AI (ML) ทำนายเลขเด่นหลักสุดท้ายงวดถัดไป")
-    pred_digit = predict_next_digit_ml(draws, window=4, epochs=60)
+    pred_digit = predict_next_digit_ml(draws, window=4)
     if pred_digit is not None:
         st.write(f"**AI ทำนายเลขหลักสุดท้าย:** <span style='font-size:2em;color:green'>{pred_digit}</span>", unsafe_allow_html=True)
     else:
