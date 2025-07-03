@@ -1,19 +1,15 @@
 import streamlit as st
-import pandas as pd
-from collections import Counter
+from collections import defaultdict
 import numpy as np
 from sklearn.neural_network import MLPClassifier
 
 st.set_page_config(page_title="StockLottoAI 5 หลัก", page_icon="🎯", layout="centered")
 st.title("🎯 StockLottoAI - วิเคราะห์หวยหุ้น 5 หลัก + AI")
 
-# คำอธิบายวิธีป้อนข้อมูล
 st.markdown(
     """
     วางผลหวยในรูปแบบ `สามตัวบน วรรค สองตัวล่าง` บรรทัดละ 1 ชุด เช่น
-    `123 45`
-    `567 89`
-    `098 76`
+    `123 45`, `567 89`, `098 76`
     """
 )
 
@@ -24,73 +20,74 @@ raw = st.text_area(
 )
 draws = []
 for line in raw.splitlines():
-    parts = line.strip().split()
-    if len(parts)==2 and parts[0].isdigit() and parts[1].isdigit():
-        if len(parts[0])==3 and len(parts[1])==2:
-            draws.append(parts[0]+parts[1])
+    p = line.strip().split()
+    if len(p)==2 and p[0].isdigit() and p[1].isdigit() and len(p[0])==3 and len(p[1])==2:
+        draws.append(p[0]+p[1])
 n_draw = len(draws)
 st.write(f"📊 โหลดข้อมูล **{n_draw}** งวด")
 
-# ─────── หาเลขเด่น 2 ตัว จาก 10 งวด ───────
-def analyze_hot_digits(nums, window=10):
+# ─────── ฟังก์ชันช่วยนับแบบถ่วงน้ำหนัก ───────
+def weighted_count(items, weights):
+    cnt = defaultdict(float)
+    for it, w in zip(items, weights):
+        cnt[it] += w
+    return cnt
+
+# ─────── ทำนายสองตัวบน/ล่าง ด้วย Weighted Frequency ───────
+def predict_weighted_pairs(nums, window=20, decay=0.9, topk=4):
     last = nums[-window:]
-    # สำหรับแต่ละหลัก 0-9 นับจำนวนงวดที่ปรากฏ
-    count_draws = {str(d): sum(1 for draw in last if str(d) in draw) for d in range(10)}
-    # เรียงจากมากไปน้อยแล้วเลือก 2 ตัวแรก
-    hot_digits = sorted(count_draws, key=lambda d: count_draws[d], reverse=True)[:2]
-    return hot_digits, count_draws
+    # สร้างเวกเตอร์น้ำหนัก: งวดล่าสุด w=1, งวดก่อนหน้า w*=decay
+    weights = [decay**i for i in range(len(last)-1, -1, -1)]
+    # ดึงคู่สองหลักท้าย (สองตัวบน/ล่าง)
+    pairs = [draw[3:] for draw in last]
+    cnt = weighted_count(pairs, weights)
+    # เรียงตามค่าน้ำหนักสูงสุด
+    sorted_pairs = sorted(cnt.items(), key=lambda x: -x[1])
+    # เลือก topk
+    return [p for p, _ in sorted_pairs][:topk]
 
-# ─────── สร้างชุดทำนายสองตัว (4 ชุด) ───────
-def predict_two_digit_sets(nums, window=10):
-    hot_digits, freq = analyze_hot_digits(nums, window)
-    a, b = hot_digits[0], hot_digits[1] if len(hot_digits)>1 else (hot_digits[0], hot_digits[0])
-    # cross และ double
-    two_sets = [a+b, b+a, a*2, b*2]
-    return two_sets, hot_digits
+# ─────── ทำนายสามตัวบน ด้วย Weighted Frequency ───────
+def predict_weighted_triplets(nums, window=20, decay=0.9, topk=2):
+    last = nums[-window:]
+    weights = [decay**i for i in range(len(last)-1, -1, -1)]
+    triplets = [draw[:3] for draw in last]
+    cnt = weighted_count(triplets, weights)
+    sorted_tris = sorted(cnt.items(), key=lambda x: -x[1])
+    #คืน topk ชุด
+    return [t for t, _ in sorted_tris][:topk]
 
-# ─────── สร้างชุดทำนายสามตัว (2 ชุด) ───────
-def predict_three_digit_sets(hot_digits):
-    if len(hot_digits) >= 2:
-        a, b = hot_digits[0], hot_digits[1]
-        return [a+a+b, b+b+a]
-    elif hot_digits:
-        return [hot_digits[0]*3, hot_digits[0]*3]
-    else:
-        return ["", ""]
-
-# ─────── แสดงผล Logic ปกติ (10 งวด) ───────
-if n_draw >= 10:
-    st.subheader("📈 วิเคราะห์เชิงสถิติ (Hot-Digit 10 งวด)")
-    two_sets, hot_digits = predict_two_digit_sets(draws, window=10)
-    three_sets = predict_three_digit_sets(hot_digits)
-    st.write("**เลขเด่น 2 ตัวจาก 10 งวด:**", ', '.join(hot_digits))
+# ─────── แสดงผลสูตรใหม่ ───────
+if n_draw >= 20:
+    st.subheader("📈 สูตรใหม่: Weighted Frequency 20 งวดล่าสุด")
+    two_sets = predict_weighted_pairs(draws, window=20)
+    three_sets = predict_weighted_triplets(draws, window=20)
     st.write("**ทำนายงวดถัดไป (สองตัวบน & ล่าง 4 ชุด):**", ', '.join(two_sets))
     st.write("**ทำนายงวดถัดไป (สามตัวบน 2 ชุด):**", ', '.join(three_sets))
 else:
-    st.info("ต้องมีข้อมูลอย่างน้อย 10 งวด (รูปแบบ 3+2) สำหรับวิเคราะห์ Hot-Digit")
+    st.info("ต้องมีข้อมูลอย่างน้อย 20 งวด สำหรับสูตร Weighted Frequency")
 
 # ─────── ML Part (Neural Network) ───────
 def predict_next_digit_ml(nums, window=4):
-    nums = [list(map(int, list(x))) for x in nums]
+    nums_i = [list(map(int, list(x))) for x in nums]
     X, y = [], []
-    for i in range(len(nums)-window):
-        X.append(np.array(nums[i:i+window]).flatten())
-        y.append(nums[i+window][-1])
+    for i in range(len(nums_i)-window):
+        X.append(np.array(nums_i[i:i+window]).flatten())
+        y.append(nums_i[i+window][-1])
     if len(X) < 10:
         return None
-    model = MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=2000, random_state=42)
+    model = MLPClassifier(hidden_layer_sizes=(32,16), max_iter=2000, random_state=42)
     model.fit(np.array(X), np.array(y))
-    last_feat = np.array(nums[-window:]).flatten().reshape(1, -1)
-    return model.predict(last_feat)[0]
+    feat = np.array(nums_i[-window:]).flatten().reshape(1,-1)
+    return model.predict(feat)[0]
 
 if n_draw >= 25:
     st.subheader("🤖 AI (ML) ทำนายเลขหลักสุดท้ายงวดถัดไป")
-    pred_digit = predict_next_digit_ml(draws, window=4)
-    if pred_digit is not None:
-        st.write(f"**AI ทำนายเลขหลักสุดท้าย:** <span style='font-size:2em;color:green'>{pred_digit}</span>", unsafe_allow_html=True)
+    pred = predict_next_digit_ml(draws, window=4)
+    if pred is not None:
+        st.write(f"**AI ทำนายเลขหลักสุดท้าย:** <span style='font-size:2em;color:green'>{pred}</span>", unsafe_allow_html=True)
     else:
-        st.warning("ข้อมูลยังน้อยเกินไปสำหรับ ML ทำนาย (ต้องอย่างน้อย 25 งวด)")
+        st.warning("ข้อมูลยังน้อยเกินไปสำหรับ ML ทำนาย (ต้อง 25 งวด)")
 else:
-    st.info("ใส่ข้อมูลอย่างน้อย 25 งวด เพื่อให้ AI (ML) เรียนรู้และทำนายได้")
+    st.info("ใส่ข้อมูลอย่างน้อย 25 งวด เพื่อให้ AI เรียนรู้และทำนาย")
 
-st.caption("© 2025 StockLottoAI - วิเคราะห์หวยหุ้น 5 หลัก พร้อม AI/ML")
+st.caption("© 2025 StockLottoAI - สูตรใหม่ Weighted Frequency + AI/ML")
