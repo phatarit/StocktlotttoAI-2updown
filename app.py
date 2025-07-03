@@ -23,22 +23,23 @@ def analyze_repeat_digits(nums, window=5):
     return repeats, c
 
 # ทำนายข้ามงวด
+
 def predict_cross_patterns(nums, window=5, topk=2):
     repeats, freq = analyze_repeat_digits(nums, window)
-    # เลือกตัวเลขที่ซ้ำบ่อยสุด
     hot_digits = sorted(repeats, key=lambda d: freq[d], reverse=True)[:topk]
     # สร้างชุดสองตัวบน-ล่าง 4 ชุด
     two_digit = []
     for a in hot_digits:
         for b in hot_digits:
-            if len(two_digit) >= 4: break
+            if len(two_digit) >= 4:
+                break
             two_digit.append(a + b)
-        if len(two_digit) >= 4: break
+        if len(two_digit) >= 4:
+            break
     # สร้างชุดสามตัวบน 1 ชุด (เบิ้ล-หาม)
     if len(hot_digits) >= 2:
         a, b = hot_digits[0], hot_digits[1]
-        triple = [a + a + b, a + b + a, b + a + a]
-        three_digit = triple[0]
+        three_digit = a + a + b  # ตัวอย่างเลือกเบิ้ล-หาม ชุดแรก
     else:
         three_digit = hot_digits[0] * 3 if hot_digits else ''
     return two_digit, three_digit
@@ -47,7 +48,9 @@ def predict_cross_patterns(nums, window=5, topk=2):
 if n_draw >= 5:
     st.subheader("📈 วิเคราะห์เชิงสถิติ (Cross-Draw 5 งวด)")
     two_sets, three_set = predict_cross_patterns(draws, window=5)
-    st.write("**เลขที่มักออกซ้ำ (Digits Repeated):**", ', '.join(sorted(set(''.join(draws[-5:]))))
+    # แสดงเลขที่ออกซ้ำบ่อย
+    repeated_digits = sorted(set(''.join(draws[-5:])))
+    st.write("**เลขที่มักออกซ้ำ (Digits Repeated):**", ', '.join(repeated_digits))
     st.write("**ทำนายงวดถัดไป - สองตัวบน & ล่าง 4 ชุด:**", ', '.join(two_sets))
     st.write("**ทำนายงวดถัดไป - สามตัวบน 1 ชุด:**", three_set)
 else:
@@ -62,7 +65,8 @@ def predict_next_digit_ml(nums, window=4):
         target = nums[i+window][-1]
         X.append(features)
         y.append(target)
-    if len(X) < 10: return None
+    if len(X) < 10:
+        return None
     X, y = np.array(X), np.array(y)
     model = MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=2000, random_state=42)
     model.fit(X, y)
