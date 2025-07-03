@@ -1,10 +1,10 @@
 import streamlit as st
-from collections import defaultdict, Counter
+from collections import defaultdict
 import numpy as np
 from sklearn.neural_network import MLPClassifier
 
 st.set_page_config(page_title="StockLottoAI 5 หลัก", page_icon="🎯", layout="centered")
-st.title("🎯 StockLottoAI - วิเคราะห์หวยหุ้น 5 หลัก + Hybrid AI")
+st.title("🎯 StockLottoAI - วิเคราะห์หวยหุ้น 5 หลัก + Improved AI")
 
 st.markdown(
     """
@@ -21,81 +21,70 @@ raw = st.text_area(
 draws = []
 for line in raw.splitlines():
     parts = line.strip().split()
-    if len(parts)==2 and parts[0].isdigit() and parts[1].isdigit() and len(parts[0])==3 and len(parts[1])==2:
-        draws.append(parts[0]+parts[1])
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        if len(parts[0]) == 3 and len(parts[1]) == 2:
+            draws.append(parts[0] + parts[1])
 n_draw = len(draws)
-st.write(f"📊 โหลดข้อมูล **{n_draw}** งวด")
+st.write(f"📊 โหลดข้อมูล **{n_draw}** งวด (รูปแบบ 3+2)")
 
-# ─────── Weighted Frequency ───────
+# ─────── Weighted helpers ───────
 def weighted_count(items, weights):
     cnt = defaultdict(float)
-    for it, w in zip(items, weights): cnt[it] += w
+    for it, w in zip(items, weights):
+        cnt[it] += w
     return cnt
 
+# ─────── คำนวณเลขเด่น 1 ตัว ───────
+def get_hot_digit(nums, window=20, decay=0.8):
+    last = nums[-window:]
+    weights = [decay**i for i in range(len(last)-1, -1, -1)]
+    # สร้างรายการตัวเลขแต่ละหลัก พร้อมน้ำหนัก
+    items, ws = [], []
+    for draw, w in zip(last, weights):
+        for ch in draw:
+            items.append(ch)
+            ws.append(w)
+    cnt = weighted_count(items, ws)
+    # คืนเลขที่มีน้ำหนักสูงสุด
+    hot = max(cnt.items(), key=lambda x: x[1])[0]
+    return hot
+
+# ─────── ทำนายสองตัวบน & ล่าง 4 ชุด ───────
 def predict_weighted_pairs(nums, window=20, decay=0.8, topk=4):
     last = nums[-window:]
     weights = [decay**i for i in range(len(last)-1, -1, -1)]
     pairs = [d[3:] for d in last]
     cnt = weighted_count(pairs, weights)
-    sorted_p = [p for p,_ in sorted(cnt.items(), key=lambda x:-x[1])]
-    return sorted_p[:topk]
+    sorted_pairs = [p for p, _ in sorted(cnt.items(), key=lambda x: -x[1])]
+    return sorted_pairs[:topk]
 
+# ─────── ทำนายสามตัวบน 2 ชุด ───────
 def predict_weighted_triplets(nums, window=20, decay=0.8, topk=2):
     last = nums[-window:]
     weights = [decay**i for i in range(len(last)-1, -1, -1)]
     tris = [d[:3] for d in last]
     cnt = weighted_count(tris, weights)
-    sorted_t = [t for t,_ in sorted(cnt.items(), key=lambda x:-x[1])]
-    return sorted_t[:topk]
+    sorted_tris = [t for t, _ in sorted(cnt.items(), key=lambda x: -x[1])]
+    # กรองไม่ให้ซ้ำจากประวัติมากเกินไป
+    from collections import Counter
+    hist = Counter([d[:3] for d in nums])
+    filtered = [t for t in sorted_tris if hist.get(t, 0) < 2]
+    # ถ้าไม่พอ ให้ใช้ค่าแรก ๆ
+    return filtered[:topk] if len(filtered) >= topk else sorted_tris[:topk]
 
-# ─────── ML-based prediction ───────
-def predict_ml_pairs(nums, window=10, topk=2):
-    pairs = [int(d[3:]) for d in nums]
-    X, y = [], []
-    for i in range(len(pairs)-window):
-        X.append(pairs[i:i+window])
-        y.append(pairs[i+window])
-    if len(X) < window*2: return []
-    model = MLPClassifier(hidden_layer_sizes=(50,), max_iter=1000, random_state=0)
-    model.fit(np.array(X), np.array(y))
-    probs = model.predict_proba([pairs[-window:]])[0]
-    classes = model.classes_
-    idx = np.argsort(probs)[-topk:][::-1]
-    return [f"{classes[i]:02d}" for i in idx]
-
-def predict_ml_triplets(nums, window=10, topk=1):
-    tris = [int(d[:3]) for d in nums]
-    X, y = [], []
-    for i in range(len(tris)-window):
-        X.append(tris[i:i+window])
-        y.append(tris[i+window])
-    if len(X) < window*2: return []
-    model = MLPClassifier(hidden_layer_sizes=(50,), max_iter=1000, random_state=0)
-    model.fit(np.array(X), np.array(y))
-    probs = model.predict_proba([tris[-window:]])[0]
-    classes = model.classes_
-    idx = np.argmax(probs)
-    return [f"{classes[idx]:03d}"]
-
-# ─────── DISPLAY RESULTS ───────
+# ─────── แสดงผล ───────
 if n_draw >= 20:
-    st.subheader("🔀 Hybrid Prediction: Weighted + ML (Exclude Overused Triplets)")
-    # Predict pairs
-    w_pairs = predict_weighted_pairs(draws)
-    ml_pairs = predict_ml_pairs(draws)
-    pairs = sorted(set(w_pairs[:2] + ml_pairs)) + w_pairs[2:4]
-    # Predict triplets
-    w_tris = predict_weighted_triplets(draws)
-    ml_tris = predict_ml_triplets(draws)
-    candidate_tris = w_tris + ml_tris
-    # Exclude any triplet appearing >=2 times in history
-    hist = Counter([d[:3] for d in draws])
-    tris_filtered = [t for t in candidate_tris if hist.get(t,0) < 2]
-    tris = tris_filtered[:2]
-    st.write("**ทำนายสองตัวบน & สองตัวล่าง (4 ชุด):**", ', '.join(pairs[:4]))
-    st.write("**ทำนายสามตัวบน (2 ชุด):**", ', '.join(tris))
+    st.subheader("🔍 Improved Prediction (20 งวดล่าสุด)")
+    hot_digit = get_hot_digit(draws)
+    two_sets = predict_weighted_pairs(draws)
+    three_sets = predict_weighted_triplets(draws)
+    st.write(f"**เลขเด่น 1 ตัว:** <span style='color:red; font-size:2em'>{hot_digit}</span>", unsafe_allow_html=True)
+    st.write("**สองตัวบน & สองตัวล่าง (4 ชุด):**", ', '.join(two_sets))
+    st.write("**สามตัวบน (2 ชุด):**", ', '.join(three_sets))
 else:
-    st.info("ต้องมีข้อมูลอย่างน้อย 20 งวด สำหรับ Hybrid Prediction")
+    st.info("ต้องมีข้อมูลอย่างน้อย 20 งวด สำหรับการวิเคราะห์ Improved Prediction")
 
-# ─────── Original ML for last digit ───────
-st.caption("Note: For granular digit prediction, use AI หลักสุดท้าย ในหน้า ML section")
+# ─────── (Optional) ML ทำนายหลักสุดท้าย ───────
+#-- สามารถใช้ฟังก์ชัน ML เดิมจากหน้า ML section ได้เพื่อทำนายหลักสุดท้าย --
+
+st.caption("© 2025 StockLottoAI - Improved AI Prediction")
