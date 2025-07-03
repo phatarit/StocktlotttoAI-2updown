@@ -31,64 +31,45 @@ for line in raw.splitlines():
 n_draw = len(draws)
 st.write(f"📊 โหลดข้อมูล **{n_draw}** งวด")
 
-# ─────── ฟังก์ชันวิเคราะห์เลขซ้ำ ───────
-def analyze_repeat_digits(nums, window=5):
+# ─────── หาเลขเด่น 2 ตัว จาก 10 งวด ───────
+def analyze_hot_digits(nums, window=10):
     last = nums[-window:]
-    # นับจำนวนครั้งแต่ละตัวเลขปรากฏ
-    c = Counter(''.join(last))
-    # เลือกตัวเลขที่ปรากฏอย่างน้อยในทุกงวด (หรือเกือบทุกงวด)
-    repeats = [d for d, cnt in c.items() if cnt >= window-1]
-    # ถ้าไม่พอ ให้ใช้ตัวเลขที่ซ้ำมากสุดสองตัว
-    if len(repeats) < 2:
-        repeats = [d for d, _ in c.most_common(2)]
-    return repeats, c
+    # สำหรับแต่ละหลัก 0-9 นับจำนวนงวดที่ปรากฏ
+    count_draws = {str(d): sum(1 for draw in last if str(d) in draw) for d in range(10)}
+    # เรียงจากมากไปน้อยแล้วเลือก 2 ตัวแรก
+    hot_digits = sorted(count_draws, key=lambda d: count_draws[d], reverse=True)[:2]
+    return hot_digits, count_draws
 
-# ─────── สร้างชุดทำนายสองตัว ───────
-def predict_two_digit_sets(nums, window=5, hotk=2, prev_draws=2):
-    hot_digits, freq = analyze_repeat_digits(nums, window)
-    # แยกเลขเด่นสองตัว
+# ─────── สร้างชุดทำนายสองตัว (4 ชุด) ───────
+def predict_two_digit_sets(nums, window=10):
+    hot_digits, freq = analyze_hot_digits(nums, window)
     a, b = hot_digits[0], hot_digits[1] if len(hot_digits)>1 else (hot_digits[0], hot_digits[0])
-    # ชุด cross hot_digits (2 ชุด)
-    cross = [a+b, b+a]
-    # ชุด double hot_digits (2 ชุด)
-    doubles = [a*2, b*2]
-    # ชุดผสม hot_digits กับเลขในงวดก่อนหน้า prev_draws งวด
-    comb_prev = set()
-    for dstr in nums[-prev_draws:]:
-        for d in hot_digits:
-            for x in dstr:
-                comb_prev.add(d+x)
-                comb_prev.add(x+d)
-    comb_prev = list(comb_prev)
-    # รวมเป็น 6 ชุด: cross (2), doubles (2), comb_prev (2)
-    result = cross + doubles + comb_prev[:2]
-    return result, hot_digits
+    # cross และ double
+    two_sets = [a+b, b+a, a*2, b*2]
+    return two_sets, hot_digits
 
-# ─────── สร้างชุดทำนายสามตัว ───────
+# ─────── สร้างชุดทำนายสามตัว (2 ชุด) ───────
 def predict_three_digit_sets(hot_digits):
     if len(hot_digits) >= 2:
         a, b = hot_digits[0], hot_digits[1]
-        # เบิ้ล-หาม เลือกสองรูปแบบ
         return [a+a+b, b+b+a]
     elif hot_digits:
         return [hot_digits[0]*3, hot_digits[0]*3]
     else:
         return ["", ""]
 
-# ─────── แสดงผล Logic ปกติ (5 งวด) ───────
-if n_draw >= 5:
-    st.subheader("📈 วิเคราะห์เชิงสถิติ ใหม่ (Cross-Draw 5 งวด)")
-    two_sets, hot_digits = predict_two_digit_sets(draws, window=5)
+# ─────── แสดงผล Logic ปกติ (10 งวด) ───────
+if n_draw >= 10:
+    st.subheader("📈 วิเคราะห์เชิงสถิติ (Hot-Digit 10 งวด)")
+    two_sets, hot_digits = predict_two_digit_sets(draws, window=10)
     three_sets = predict_three_digit_sets(hot_digits)
-    # แสดงเลขซ้ำบ่อยสุด
-    repeats, freq = analyze_repeat_digits(draws, window=5)
-    st.write("**เลขเด่น 2 ตัว:**", ', '.join(hot_digits))
-    st.write("**ทำนายงวดถัดไป (สองตัวบน & ล่าง 6 ชุด):**", ', '.join(two_sets))
+    st.write("**เลขเด่น 2 ตัวจาก 10 งวด:**", ', '.join(hot_digits))
+    st.write("**ทำนายงวดถัดไป (สองตัวบน & ล่าง 4 ชุด):**", ', '.join(two_sets))
     st.write("**ทำนายงวดถัดไป (สามตัวบน 2 ชุด):**", ', '.join(three_sets))
 else:
-    st.info("ต้องมีข้อมูลอย่างน้อย 5 งวด ในรูปแบบ 3+2 สำหรับวิเคราะห์")
+    st.info("ต้องมีข้อมูลอย่างน้อย 10 งวด (รูปแบบ 3+2) สำหรับวิเคราะห์ Hot-Digit")
 
-# ─────── ML Part (เดิม) ───────
+# ─────── ML Part (Neural Network) ───────
 def predict_next_digit_ml(nums, window=4):
     nums = [list(map(int, list(x))) for x in nums]
     X, y = [], []
