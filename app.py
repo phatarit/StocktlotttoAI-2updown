@@ -6,18 +6,30 @@ from sklearn.neural_network import MLPClassifier
 
 st.set_page_config(page_title="StockLottoAI 5 หลัก", page_icon="🎯", layout="centered")
 st.title("🎯 StockLottoAI - วิเคราะห์หวยหุ้น 5 หลัก + AI")
-st.markdown("วางผลหวยในรูปแบบ `สามตัวบน วรรค สองตัวล่าง` แต่ละงวด (บรรทัดละ 1 ชุด) เช่น `123 45`\n`567 89`\n`098 76`
+
+# คำอธิบายวิธีป้อนข้อมูล
+st.markdown(
+    """
+    วางผลหวยในรูปแบบ `สามตัวบน วรรค สองตัวล่าง` แต่ละงวด (บรรทัดละ 1 ชุด) เช่น
+    `123 45`
+    `567 89`
+    `098 76`
+    """
 )
 
 # ─────── INPUT ───────
-raw = st.text_area("📥 วางผลหวย 5 หลัก (สามตัวบน วรรค สองตัวล่าง)", height=220,
-                   placeholder="123 45\n567 89\n098 76 ...")
+raw = st.text_area(
+    "📥 วางผลหวย 5 หลัก (สามตัวบน วรรค สองตัวล่าง)",
+    height=220,
+    placeholder="123 45\n567 89\n098 76 ..."
+)
+# รวมเลขเป็นสตริง 5 หลัก
 draws = []
 for line in raw.splitlines():
     parts = line.strip().split()
-    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit() 
-       and len(parts[0]) == 3 and len(parts[1]) == 2:
-        draws.append(parts[0] + parts[1])
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        if len(parts[0]) == 3 and len(parts[1]) == 2:
+            draws.append(parts[0] + parts[1])
 n_draw = len(draws)
 st.write(f"📊 โหลดข้อมูล **{n_draw}** งวด (รูปแบบ 3+2 หลัก)")
 
@@ -29,8 +41,7 @@ def analyze_repeat_digits(nums, window=5):
     repeats = [d for d, cnt in c.items() if cnt > 1]
     return repeats, c
 
-# ทำนายข้ามงวด
-# สร้างชุดสองตัวบน-ล่าง และสามตัวบน (เบิ้ล-หาม)
+# ทำนายข้ามงวด (Cross-Draw)
 def predict_cross_patterns(nums, window=5, topk=2):
     repeats, freq = analyze_repeat_digits(nums, window)
     hot_digits = sorted(repeats, key=lambda d: freq[d], reverse=True)[:topk]
@@ -55,7 +66,6 @@ def predict_cross_patterns(nums, window=5, topk=2):
 if n_draw >= 5:
     st.subheader("📈 วิเคราะห์เชิงสถิติ (Cross-Draw 5 งวด)")
     two_sets, three_set = predict_cross_patterns(draws, window=5)
-    # แสดงเลขที่มักออกซ้ำบ่อยสุดใน 5 งวดล่าสุด
     repeats, freq = analyze_repeat_digits(draws, window=5)
     st.write("**เลขที่มักออกซ้ำ (Digits Repeated):**", ', '.join(sorted(repeats)))
     st.write("**ทำนายงวดถัดไป - สองตัวบน & ล่าง 4 ชุด:**", ', '.join(two_sets))
