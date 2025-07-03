@@ -60,7 +60,6 @@ def predict_ml_pairs(nums, window=10, topk=2):
     model.fit(np.array(X), np.array(y))
     probs = model.predict_proba([pairs[-window:]])[0]
     classes = model.classes_
-    # select topk by probability
     idx = np.argsort(probs)[-topk:][::-1]
     return [f"{classes[i]:02d}" for i in idx]
 
@@ -80,15 +79,21 @@ def predict_ml_triplets(nums, window=10, topk=1):
 
 # ─────── DISPLAY RESULTS ───────
 if n_draw >= 20:
-    st.subheader("🔀 Hybrid Prediction: Weighted + ML")
+    st.subheader("🔀 Hybrid Prediction: Weighted + ML (Exclude Overused Triplets)")
+    # Predict pairs
     w_pairs = predict_weighted_pairs(draws)
     ml_pairs = predict_ml_pairs(draws)
     pairs = sorted(set(w_pairs[:2] + ml_pairs)) + w_pairs[2:4]
+    # Predict triplets
     w_tris = predict_weighted_triplets(draws)
     ml_tris = predict_ml_triplets(draws)
-    tris = w_tris + ml_tris
+    candidate_tris = w_tris + ml_tris
+    # Exclude any triplet appearing >=2 times in history
+    hist = Counter([d[:3] for d in draws])
+    tris_filtered = [t for t in candidate_tris if hist.get(t,0) < 2]
+    tris = tris_filtered[:2]
     st.write("**ทำนายสองตัวบน & สองตัวล่าง (4 ชุด):**", ', '.join(pairs[:4]))
-    st.write("**ทำนายสามตัวบน (2 ชุด):**", ', '.join(tris[:2]))
+    st.write("**ทำนายสามตัวบน (2 ชุด):**", ', '.join(tris))
 else:
     st.info("ต้องมีข้อมูลอย่างน้อย 20 งวด สำหรับ Hybrid Prediction")
 
